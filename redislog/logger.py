@@ -3,22 +3,23 @@ import getpass
 import datetime
 import inspect
 import logging
+from celery import current_task
 
 def levelAsString(level):
     return {logging.DEBUG: 'debug',
             logging.INFO: 'info',
-            logging.WARNING: 'warning', 
-            logging.ERROR: 'error', 
-            logging.CRITICAL: 'critical', 
+            logging.WARNING: 'warning',
+            logging.ERROR: 'error',
+            logging.CRITICAL: 'critical',
             logging.FATAL: 'fatal'}.get(level, 'unknown')
 
 def _getCallingContext():
     """
     Utility function for the RedisLogRecord.
 
-    Returns the module, function, and lineno of the function 
-    that called the logger.  
- 
+    Returns the module, function, and lineno of the function
+    that called the logger.
+
     We look way up in the stack.  The stack at this point is:
     [0] logger.py _getCallingContext (hey, that's me!)
     [1] logger.py __init__
@@ -41,7 +42,7 @@ def _getCallingContext():
         funcname = context[3]
     else:
         funcname = ""
-        
+
     # python docs say you don't want references to
     # frames lying around.  Bad things can happen.
     del context
@@ -82,11 +83,18 @@ class RedisLogger(logging.getLoggerClass()):
     def makeRecord(self, name, lvl, fn, lno, msg, args, exc_info, func=None, extra=None):
         record = RedisLogRecord(name, lvl, fn, lno, msg, args, exc_info, func=None)
 
+        try:
+            request = current_task.request
+            result = current_task.AsyncResult(request.id)
+            record._raw['job_state'] = result.state
+        except:
+            pass
+
         if extra:
             for key in extra:
                 if (key in ["message", "asctime"]) or (key in record.__dict__):
                     raise KeyError("Attempt to overwrite %r in RedisLogRecord" % key)
-                record.__dict__[key] = extra[key]
+                record._raw[key] = extra[key]
         return record
 
 
